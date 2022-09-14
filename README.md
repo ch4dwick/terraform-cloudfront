@@ -21,4 +21,4 @@ After cherry-picking or tweaking the files to your needs:
 
 ## Disclaimer:
 
-This is a work in progress. I am by no means an expert on networking or on AWS. All of the configuration defined here are best-guess or defaults. I take no responsibility for any incurred costs resulting from the AWS resources created by these files. 
+This is a work in progress. I am by no means an expert on AWS. All of the configuration defined here are best-guess or defaults. I take no responsibility for any incurred costs resulting from the AWS resources created by these files. 

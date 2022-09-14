@@ -14,8 +14,12 @@ resource "aws_s3_bucket_public_access_block" "my-cdn-s3-block" {
   restrict_public_buckets = true
 }
 
-resource "aws_cloudfront_origin_access_identity" "my-cdn-oai" {
-  comment = "My CDN OAI"
+resource "aws_cloudfront_origin_access_control" "my-oac" {
+  name                              = "My OAC"
+  description                       = "For OAC to S3"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "no-override"
+  signing_protocol                  = "sigv4"
 }
 
 resource "aws_s3_bucket_policy" "my-cdn-cf-policy" {
@@ -27,17 +31,27 @@ data "aws_iam_policy_document" "my-cdn-cf-policy" {
   statement {
     sid = "1"
     principals {
-      type        = "AWS"
-      identifiers = [aws_cloudfront_origin_access_identity.my-cdn-oai.iam_arn]
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
     }
 
     actions = [
-      "s3:GetObject"
+      "s3:GetObject",
+      # This is needed to trigger a 404 from CloudFront. Otherwise, you'll need to catch the 403.
+      "s3:ListBucket"
     ]
 
     resources = [
-      "${aws_s3_bucket.my-cdn-s3.arn}/*"
+      "${aws_s3_bucket.my-cdn-s3.arn}/*",
+      # This is needed to trigger a 404 from CloudFront. Otherwise, you'll need to catch the 403.
+      "${aws_s3_bucket.my-cdn-s3.arn}"
     ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.my-cdn-s3-distribution.arn]
+    }
   }
 }
 
@@ -48,12 +62,9 @@ locals {
 resource "aws_cloudfront_distribution" "my-cdn-s3-distribution" {
 
   origin {
-    domain_name = aws_s3_bucket.my-cdn-s3.bucket_regional_domain_name
-    origin_id   = local.s3_origin_id
-
-    s3_origin_config {
-      origin_access_identity = aws_cloudfront_origin_access_identity.my-cdn-oai.cloudfront_access_identity_path
-    }
+    domain_name              = aws_s3_bucket.my-cdn-s3.bucket_regional_domain_name
+    origin_id                = local.s3_origin_id
+    origin_access_control_id = aws_cloudfront_origin_access_control.my-oac.id
   }
 
   enabled             = true
@@ -81,6 +92,23 @@ resource "aws_cloudfront_distribution" "my-cdn-s3-distribution" {
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
+  }
+
+  # VueJS Catch-all
+  # Use this if you don't want to use the s3:ListBucket solution.
+  # custom_error_response {
+  #   error_code            = 403
+  #   response_code         = 200
+  #   response_page_path    = "/index.html"
+  #   error_caching_min_ttl = 10
+  # }
+
+  # VueJS Catch-all
+  custom_error_response {
+    error_code            = 404
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 10
   }
 
   # Cache behavior with precedence 0
